@@ -26,10 +26,10 @@ from kivy.clock import Clock
 from kivy.factory import Factory
 from kivy import resources
 
-from forced_choice.devices import Server, FTDIDevChannel, FTDIOdors,\
+from sniffer.devices import Server, FTDIDevChannel, FTDIOdors,\
     FTDIOdorsSim, DAQInDevice, DAQInDeviceSim, DAQOutDevice, DAQOutDeviceSim,\
     MassFlowController, MassFlowControllerSim, FFpyPlayer
-from forced_choice import exp_config_name, device_config_name
+from sniffer import exp_config_name, device_config_name
 
 
 odor_method_pat = compile('random([0-9]*)')

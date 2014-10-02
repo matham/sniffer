@@ -29,9 +29,9 @@ from kivy.utils import get_color_from_hex as rgb
 from moa.app import MoaApp
 from moa.compat import unicode_type
 from moa.config import ConfigParser
-from forced_choice.graphics import MainView
-from forced_choice.stages import RootStage
-from forced_choice import device_config_name, exp_config_name
+from sniffer.graphics import MainView
+from sniffer.stages import RootStage
+from sniffer import device_config_name, exp_config_name
 
 from os.path import dirname, join, isfile
 import traceback

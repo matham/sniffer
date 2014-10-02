@@ -32,7 +32,7 @@ from kivy.app import App
 from kivy.clock import Clock
 from kivy.event import EventDispatcher
 
-from forced_choice import device_config_name
+from sniffer import device_config_name
 
 
 class DeviceStageInterface(object):

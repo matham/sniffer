@@ -1,4 +1,4 @@
-Go nogo
+Sniffer
 =======
 
-A go/nogo experiment with moa and pybarst.
+Project to acquire pressure sniffing data.
