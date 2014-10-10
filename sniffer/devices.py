@@ -3,34 +3,31 @@
 
 
 __all__ = ('DeviceStageInterface', 'Server', 'FTDIDevChannel', 'FTDIOdorsBase',
-           'FTDIOdorsSim', 'FTDIOdors', 'DAQInDeviceBase', 'DAQInDeviceSim',
-           'DAQInDevice', 'DAQOutDeviceBase', 'DAQOutDeviceSim',
-           'DAQOutDevice', 'MassFlowControllerBase', 'MassFlowControllerSim',
-           'MFCSafe', 'MassFlowController', 'FFpyPlayer')
+           'FTDIOdorsSim', 'FTDIOdors', 'FTDIADCBase', 'FTDIADCSim', 'FTDIADC')
 
 from functools import partial
 import traceback
+from math import cos, pi
 
 from moa.compat import bytes_type, unicode_type
 from moa.threads import ScheduledEventLoop
 from moa.device import Device
 from moa.device.digital import ButtonPort, ButtonChannel
 from moa.device.analog import NumericPropertyChannel
+from moa.device.adc import VirtualADCPort
+from moa.tools import ConfigPropertyList, to_bool
 
 from pybarst.core.server import BarstServer
 from pybarst.ftdi import FTDIChannel
 from pybarst.ftdi.switch import SerializerSettings
-from pybarst.mcdaq import MCDAQChannel
+from pybarst.ftdi.adc import ADCSettings
 
-from moadevs.ftdi import FTDISerializerDevice
-from moadevs.mfc import MFC
-from moadevs.mcdaq import MCDAQDevice
+from moadevs.ftdi import FTDISerializerDevice, FTDIADCDevice
 
 from kivy.properties import (ConfigParserProperty, BooleanProperty,
-                             ListProperty, ObjectProperty)
+                             ListProperty, ObjectProperty, NumericProperty)
 from kivy.app import App
 from kivy.clock import Clock
-from kivy.event import EventDispatcher
 
 from sniffer import device_config_name
 
@@ -125,84 +122,29 @@ class FTDIDevChannel(DeviceStageInterface, ScheduledEventLoop, Device):
         Barst ftdi channel. `server` is the Barst server.
         '''
         self.target = FTDIChannel(
-            channels=dev_settings, server=server, desc=self.ftdi_desc,
-            serial=self.ftdi_serial)
+            channels=dev_settings, server=server,
+            desc=self.ftdi_desc[self.dev_idx],
+            serial=self.ftdi_serial[self.dev_idx])
 
     def start_channel(self):
         self.target.open_channel(alloc=True)
         self.target.close_channel_server()
         return self.target.open_channel(alloc=True)
 
-    ftdi_serial = ConfigParserProperty(b'', 'FTDI_chan', 'serial_number',
-                                       device_config_name, val_type=bytes_type)
+    ftdi_serial = ConfigPropertyList(b'', 'FTDI_chan', 'serial_number',
+                                     device_config_name, val_type=bytes_type)
     '''The serial number if the FTDI hardware board. Can be empty.
     '''
 
-    ftdi_desc = ConfigParserProperty(b'', 'FTDI_chan', 'description_id',
-                                     device_config_name, val_type=bytes_type)
+    ftdi_desc = ConfigPropertyList(b'', 'FTDI_chan', 'description_id',
+                                   device_config_name, val_type=bytes_type)
     '''The description of the FTDI hardware board.
 
     :attr:`ftdi_serial` or :attr:`ftdi_desc` are used to locate the correct
     board to open. An example is `'Alder Board'` for the Alder board.
     '''
 
-
-class MassFlowControllerBase(EventDispatcher):
-
-    air = ObjectProperty(None)
-
-    mfc_a = ObjectProperty(None)
-
-    mfc_b = ObjectProperty(None)
-
-
-class MassFlowControllerSim(MassFlowControllerBase):
-
-    def __init__(self, air, mfc_a, mfc_b):
-        self.air = NumericPropertyChannel(channel_widget=air[0],
-                                          prop_name=air[1])
-        self.mfc_a = NumericPropertyChannel(channel_widget=mfc_a[0],
-                                            prop_name=mfc_a[1])
-        self.mfc_b = NumericPropertyChannel(channel_widget=mfc_b[0],
-                                            prop_name=mfc_b[1])
-
-
-class MFCSafe(DeviceStageInterface, MFC):
-    pass
-
-
-class MassFlowController(MassFlowControllerBase):
-
-    def create_device(self, server):
-        self.air = MFCSafe(server=server, mfc_port_name=self.air_port,
-                           mfc_id=self.air_id)
-        self.mfc_a = MFCSafe(server=server, mfc_port_name=self.air_port,
-                             mfc_id=self.air_id)
-        self.mfc_b = MFCSafe(server=server, mfc_port_name=self.air_port,
-                             mfc_id=self.air_id)
-
-    def start_channel(self):
-        self.air.init_mfc()
-        self.mfc_a.init_mfc()
-        self.mfc_b.init_mfc()
-
-    air_id = ConfigParserProperty(0, 'MFC', 'air_id', device_config_name,
-                                  val_type=int)
-
-    air_port = ConfigParserProperty('', 'MFC', 'air_port', device_config_name,
-                                    val_type=unicode_type)
-
-    mfc_a_id = ConfigParserProperty(0, 'MFC', 'mfc_a_id', device_config_name,
-                                    val_type=int)
-
-    mfc_a_port = ConfigParserProperty(
-        '', 'MFC', 'mfc_a_port', device_config_name, val_type=unicode_type)
-
-    mfc_b_id = ConfigParserProperty(0, 'MFC', 'mfc_b_id', device_config_name,
-                                    val_type=int)
-
-    mfc_b_port = ConfigParserProperty(
-        '', 'MFC', 'mfc_b_port', device_config_name, val_type=unicode_type)
+    dev_idx = NumericProperty(0)
 
 
 class FTDIOdorsBase(object):
@@ -257,12 +199,14 @@ class FTDIOdorsBase(object):
     p15 = BooleanProperty(False, allownone=True)
     '''Controls valve 15. '''
 
-    num_boards = ConfigParserProperty(2, 'FTDI_odor', 'num_boards',
-                                      device_config_name, val_type=int)
+    num_boards = ConfigPropertyList(2, 'FTDI_odor', 'num_boards',
+                                    device_config_name, val_type=int)
     '''The number of valve boards connected to the FTDI device.
 
     Each board controls 8 valves. Defaults to 2.
     '''
+
+    dev_idx = NumericProperty(0)
 
 
 class FTDIOdorsSim(FTDIOdorsBase, ButtonPort):
@@ -276,230 +220,118 @@ class FTDIOdors(FTDIOdorsBase, DeviceStageInterface, FTDISerializerDevice):
     '''
 
     def __init__(self, **kwargs):
-        mapping = {'p{}'.format(i): i for i in range(8 * self.num_boards)}
+        mapping = {'p{}'.format(i): i for i in range(8 * self.num_boards[kwargs['dev_idx']])}
         super(FTDIOdors, self).__init__(mapping=mapping, **kwargs)
 
     def get_settings(self):
         '''Returns the :class:`SerializerSettings` instance used to create the
         Barst FTDI odor device.
         '''
+        i = self.dev_idx
         return SerializerSettings(
-            clock_bit=self.clock_bit, data_bit=self.data_bit,
-            latch_bit=self.latch_bit, num_boards=self.num_boards, output=True)
+            clock_bit=self.clock_bit[i], data_bit=self.data_bit[i],
+            latch_bit=self.latch_bit[i], num_boards=self.num_boards[i],
+            output=True)
 
     def start_channel(self):
         odors = self.target
         odors.open_channel()
         odors.set_state(True)
-        odors.write(set_low=range(8 * self.num_boards))
+        odors.write(set_low=range(8 * self.num_boards[self.dev_idx]))
 
-    clock_bit = ConfigParserProperty(0, 'FTDI_odor', 'clock_bit',
-                                     device_config_name, val_type=int)
+    ftdi_dev = ConfigPropertyList(0, 'FTDI_odor', 'ftdi_dev',
+                                  device_config_name, val_type=int)
+
+    clock_bit = ConfigPropertyList(0, 'FTDI_odor', 'clock_bit',
+                                   device_config_name, val_type=int)
     '''The pin on the FTDI board to which the valve's clock bit is connected.
 
     Defaults to zero.
     '''
 
-    data_bit = ConfigParserProperty(0, 'FTDI_odor', 'data_bit',
-                                    device_config_name, val_type=int)
+    data_bit = ConfigPropertyList(0, 'FTDI_odor', 'data_bit',
+                                  device_config_name, val_type=int)
     '''The pin on the FTDI board to which the valve's data bit is connected.
 
     Defaults to zero.
     '''
 
-    latch_bit = ConfigParserProperty(0, 'FTDI_odor', 'latch_bit',
-                                     device_config_name, val_type=int)
+    latch_bit = ConfigPropertyList(0, 'FTDI_odor', 'latch_bit',
+                                   device_config_name, val_type=int)
     '''The pin on the FTDI board to which the valve's latch bit is connected.
 
     Defaults to zero.
     '''
 
 
-class DAQInDeviceBase(object):
-    '''Base class for the Switch & Sense 8/8 input ports.
-    '''
-
-    nose_beam = BooleanProperty(False, allownone=True)
-    '''Reads / controls the nose port photobeam.
-    '''
-
-    reward_beam_r = BooleanProperty(False, allownone=True)
-    '''Reads / controls the right reward port photobeam.
-    '''
-
-    reward_beam_l = BooleanProperty(False, allownone=True)
-    '''Reads / controls the left reward port photobeam.
-    '''
-
-
-class DAQInDeviceSim(DAQInDeviceBase, ButtonPort):
-    '''Device used when simulating the Switch & Sense 8/8 input device.
-    '''
-    pass
-
-
-class DAQInDevice(DAQInDeviceBase, DeviceStageInterface, MCDAQDevice):
-    '''Device used when using the barst Switch & Sense 8/8 output devices.
-    '''
+class FTDIADCBase(object):
 
     def __init__(self, **kwargs):
-        mapping = {'nose_beam': self.nose_beam_pin,
-                   'reward_beam_r': self.reward_beam_r_pin,
-                   'reward_beam_l': self.reward_beam_l_pin}
-        super(DAQInDevice, self).__init__(mapping=mapping, input=True,
-                                          **kwargs)
+        super(FTDIADCBase, self).__init__(**kwargs)
+        i = self.dev_idx
+        self.active_channels = [self.chan1_active[i], self.chan2_active[i]]
+        self.bit_depth = self.data_width
+        self.frequency = self.sampling_rate
+        self.num_channels = 2
 
-    def create_device(self, server):
-        '''See :meth:`DeviceStageInterface.create_device`.
+    dev_idx = NumericProperty(0)
 
-        `server` is the Barst server.
-        '''
+    sampling_rate = ConfigParserProperty(1000, 'FTDI_ADC', 'sampling_rate',
+                                         device_config_name, val_type=float)
 
-        self.target = MCDAQChannel(chan=self.SAS_chan, server=server)
+    data_width = ConfigParserProperty(24, 'FTDI_ADC', 'data_width',
+                                      device_config_name, val_type=int)
 
-    def start_channel(self):
-        target = self.target
-        target.open_channel()
-        target.close_channel_server()
-        target.open_channel()
+    chan1_active = ConfigPropertyList(True, 'FTDI_ADC', 'chan1_active',
+                                      device_config_name, val_type=to_bool)
 
-    SAS_chan = ConfigParserProperty(
-        0, 'Switch_and_Sense_8_8', 'channel_number', device_config_name,
-        val_type=int)
-    '''`channel_number`, the channel number of the Switch & Sense 8/8 as
-    configured in InstaCal.
+    chan2_active = ConfigPropertyList(False, 'FTDI_ADC', 'chan2_active',
+                                      device_config_name, val_type=to_bool)
 
-    Defaults to zero.
-    '''
-
-    nose_beam_pin = ConfigParserProperty(
-        1, 'Switch_and_Sense_8_8', 'nose_beam_pin', device_config_name,
-        val_type=int)
-    '''The port in the Switch & Sense to which the nose port photobeam is
-    connected to.
-
-    Defaults to zero.
-    '''
-
-    reward_beam_r_pin = ConfigParserProperty(
-        3, 'Switch_and_Sense_8_8', 'reward_beam_r_pin', device_config_name,
-        val_type=int)
-    '''The port in the Switch & Sense to which the reward port photobeam is
-    connected to.
-
-    Defaults to zero.
-    '''
-
-    reward_beam_l_pin = ConfigParserProperty(
-        2, 'Switch_and_Sense_8_8', 'reward_beam_l_pin', device_config_name,
-        val_type=int)
-    '''The port in the Switch & Sense to which the reward port photobeam is
-    connected to.
-
-    Defaults to zero.
-    '''
+    transfer_size = ConfigParserProperty(1000, 'FTDI_ADC', 'transfer_size',
+                                         device_config_name, val_type=int)
 
 
-class DAQOutDeviceBase(object):
-    '''Base class for the Switch & Sense 8/8 output ports.
-    '''
-
-    house_light = BooleanProperty(False, allownone=True)
-    '''Controls the house light.
-    '''
-
-    ir_leds = BooleanProperty(False, allownone=True)
-    '''Controls the stress light.
-    '''
-
-    fans = BooleanProperty(False, allownone=True)
-    '''Controls the stress light.
-    '''
-
-    feeder_r = BooleanProperty(False, allownone=True)
-    '''Controls the stress light.
-    '''
-
-    feeder_l = BooleanProperty(False, allownone=True)
-    '''Controls the stress light.
-    '''
-
-
-class DAQOutDeviceSim(DAQOutDeviceBase, ButtonPort):
-    '''Device used when simulating the Switch & Sense 8/8 output device.
-    '''
-    pass
-
-
-class DAQOutDevice(DAQOutDeviceBase, DeviceStageInterface, MCDAQDevice):
-    '''Device used when using the barst Switch & Sense 8/8 output devices.
-    '''
+class FTDIADCSim(FTDIADCBase, VirtualADCPort):
 
     def __init__(self, **kwargs):
-        mapping = {'house_light': self.house_light_pin,
-                   'ir_leds': self.ir_leds_pin,
-                   'fans': self.fans_pin,
-                   'feeder_r': self.feeder_r_pin,
-                   'feeder_l': self.feeder_l_pin}
-        super(DAQOutDevice, self).__init__(mapping=mapping, **kwargs)
+        super(FTDIADCSim, self).__init__(**kwargs)
+        self.data_size = self.transfer_size
 
-    def create_device(self, server):
-        '''See :meth:`DeviceStageInterface.create_device`.
+        def next_point(i):
+            return .2 * cos(2 * pi * i / float(self.frequency))
+        self.data_func = next_point
 
-        `server` is the Barst server.
-        '''
 
-        self.target = MCDAQChannel(chan=self.SAS_chan, server=server)
+class FTDIADC(FTDIADCBase, DeviceStageInterface, FTDIADCDevice):
+
+    def get_settings(self):
+        i = self.dev_idx
+        return ADCSettings(
+            clock_bit=self.clock_bit[i], lowest_bit=self.lowest_bit[i],
+            num_bits=self.num_bits[i], sampling_rate=self.sampling_rate,
+            chan1=self.chan1_active[i], chan2=self.chan2_active[i],
+            transfer_size=self.transfer_size, data_width=self.data_width)
 
     def start_channel(self):
-        self.target.open_channel()
-        self.target.write(mask=0xFF, value=0)
+        adc = self.target
+        adc.open_channel()
+#         adc.set_state(True)
+#         adc.read()
+#         adc.set_state(False)
+#         try:
+#             adc.read()
+#         except:
+#             pass
 
-    SAS_chan = ConfigParserProperty(
-        0, 'Switch_and_Sense_8_8', 'channel_number', device_config_name,
-        val_type=int)
-    '''`channel_number`, the channel number of the Switch & Sense 8/8 as
-    configured in InstaCal.
-    '''
+    ftdi_dev = ConfigPropertyList(0, 'FTDI_ADC', 'ftdi_dev',
+                                  device_config_name, val_type=int)
 
-    house_light_pin = ConfigParserProperty(
-        4, 'Switch_and_Sense_8_8', 'house_light_pin', device_config_name,
-        val_type=int)
-    '''The port in the Switch & Sense to which the house light is
-    connected to.
+    clock_bit = ConfigPropertyList(0, 'FTDI_ADC', 'clock_bit',
+                                   device_config_name, val_type=int)
 
-    Defaults to zero.
-    '''
+    lowest_bit = ConfigPropertyList(0, 'FTDI_ADC', 'lowest_bit',
+                                    device_config_name, val_type=int)
 
-    ir_leds_pin = ConfigParserProperty(
-        6, 'Switch_and_Sense_8_8', 'ir_leds_pin', device_config_name,
-        val_type=int)
-
-    fans_pin = ConfigParserProperty(
-        5, 'Switch_and_Sense_8_8', 'fans_pin', device_config_name,
-        val_type=int)
-
-    feeder_r_pin = ConfigParserProperty(
-        2, 'Switch_and_Sense_8_8', 'feeder_r_pin', device_config_name,
-        val_type=int)
-
-    feeder_l_pin = ConfigParserProperty(
-        0, 'Switch_and_Sense_8_8', 'feeder_l_pin', device_config_name,
-        val_type=int)
-
-
-class FFpyPlayer(ButtonChannel):
-
-    player = None
-
-    playing = False
-
-    def on_state(self, *l):
-        if self.playing == self.state:
-            return
-        try:
-            self.player.toggle_pause()
-        except Exception as e:
-            App.get_running_app().device_exception((e, traceback.format_exc()))
-            return
-        self.playing = not self.playing
+    num_bits = ConfigPropertyList(0, 'FTDI_ADC', 'num_bits',
+                                  device_config_name, val_type=int)

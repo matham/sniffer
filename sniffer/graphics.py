@@ -8,7 +8,7 @@ from kivy.factory import Factory
 from kivy.lang import Builder
 from kivy.app import App
 from kivy.utils import get_color_from_hex as rgb
-from kivy.garden.graph import Graph, MeshLinePlot
+from kivy.garden.graph import MeshLinePlot, SmoothLinePlot
 from kivy.clock import Clock
 
 from os import path
@@ -26,31 +26,22 @@ class DeviceSwitch(Factory.get('SwitchIcon')):
         Clock.schedule_once(self._bind_button)
 
     def _bind_button(self, *largs):
-        if (not self.input and not App.get_running_app().simulate and
-                not self.virtual):
+        if not App.get_running_app().simulate:
             self.bind(state=self.update_from_button)
 
     dev = ObjectProperty(None, allownone=True)
+
+    dev_idx = NumericProperty(0)
 
     _dev = None
 
     channel = StringProperty(None)
 
-    input = BooleanProperty(False)
-
-    virtual = BooleanProperty(False)
-    '''If it's backed up by a button. Similar to app.simulate, but even if
-    that's false it could be kivy button backed.
-    '''
-
-    multichannel = BooleanProperty(True)
-
     def on_dev(self, *largs):
         if self._dev:
             self._dev.unbind(**{self.channel: self.update_from_channel})
         self._dev = self.dev
-        if (self.dev and not App.get_running_app().simulate and
-                not self.virtual):
+        if self.dev and not App.get_running_app().simulate:
             self.dev.bind(**{self.channel: self.update_from_channel})
 
     def update_from_channel(self, *largs):
@@ -70,81 +61,82 @@ class DeviceSwitch(Factory.get('SwitchIcon')):
         '''
         dev = self.dev
         if dev is not None:
-            if self.multichannel:
-                if self.state == 'down':
-                    dev.set_state(high=[self.channel])
-                else:
-                    dev.set_state(low=[self.channel])
+            if self.state == 'down':
+                dev.set_state(high=[self.channel])
             else:
-                dev.set_state(self.state == 'down')
+                dev.set_state(low=[self.channel])
 
 
 class OdorContainer(GridLayout):
 
-    def __init__(self, **kw):
+    def __init__(self, dev_idx=0, num_boards=2, **kw):
         super(OdorContainer, self).__init__(**kw)
         switch = [Factory.get('OdorSwitch'), Factory.get('OdorDarkSwitch')]
-        for i in range(16):
-            self.add_widget(switch[i % 2](channel='p{}'.format(i)))
+        for i in range(8 * num_boards):
+            self.add_widget(switch[i % 2](channel='p{}'.format(i),
+                                          dev_idx=dev_idx))
 
 
-class SimulatedDevices(GridLayout):
-
-    odor_dev = ObjectProperty(None, allownone=True)
-    daq_in_dev = ObjectProperty(None, allownone=True)
-    daq_out_dev = ObjectProperty(None, allownone=True)
-    sound_l_dev = ObjectProperty(None, allownone=True)
-    sound_r_dev = ObjectProperty(None, allownone=True)
+class ExperimentStatus(Label):
+    parent = ObjectProperty(None, allownone=True, rebind=True)
 
 
-class TrialOutcome(GridLayout):
+class BoxDisplay(BoxLayout):
 
-    animal = StringProperty('')
+    next_btn = ObjectProperty(None)
 
-    block = NumericProperty(0)
+    exp_status = NumericProperty(0)
 
-    trial = NumericProperty(0)
+    stage = ObjectProperty(None, rebind=True)
 
-    ttnp = NumericProperty(None, allownone=True)
+    adc = ObjectProperty(None)
 
-    tinp = NumericProperty(None, allownone=True)
+    adc_channel = NumericProperty(0)
 
-    ttrp = NumericProperty(None, allownone=True)
+    box = NumericProperty(0)
 
-    iti = NumericProperty(None, allownone=True)
+    graph = ObjectProperty(None)
 
-    side = StringProperty('-')
+    plot = ObjectProperty(None)
 
-    side_went = StringProperty('-')
+    def on_graph(self, *largs):
+        self.plot = plot = MeshLinePlot(color=(.95, .29, .043, 1))
+        self.graph.add_plot(plot)
 
-    rewarded = StringProperty('-')
+    def on_adc(self, *largs):
+        self.adc.bind(data=self.update_graph)
 
-    passed = BooleanProperty(None, allownone=True)
+    def __init__(self, **kw):
+        super(BoxDisplay, self).__init__(**kw)
+        self.padding = [5]
+        self.spacing = 10
 
-    incomplete = BooleanProperty(None, allownone=True)
+    def init_trials(self, odors):
+        status = self.ids.status
+        status.clear_widgets()
+        self.exp_status = 0
+        ExperimentStatus = Factory.get('ExperimentStatus')
+        add = status.add_widget
 
-    def init_outcome(self, animal, block, trial):
-        self.animal = animal
-        self.block = block
-        self.trial = trial
+        add(ExperimentStatus(text='Pre'))
+        for o in odors[:-1]:
+            add(ExperimentStatus(text=o))
+            add(ExperimentStatus(text='ITI'))
+        if len(odors):
+            add(ExperimentStatus(text=odors[-1]))
+        add(ExperimentStatus(text='Post'))
 
-        self.ttnp = self.tinp = self.ttrp = self.iti = None
-        self.passed = self.incomplete = None
-        self.side = self.side_went = self.rewarded = '-'
-
-
-class TrialPrediction(Label):
-
-    odor = StringProperty('')
-
-    trial = NumericProperty(0)
-
-    outcome = BooleanProperty(None)
-
-    outcome_text = StringProperty('')
-
-    side = StringProperty(u'Ø')
-
-    side_went = StringProperty(u'Ø')
-
-    side_rewarded = StringProperty(u'Ø')
+    def update_graph(self, *l):
+        data = self.adc.data[self.adc_channel]
+        if not data:
+            return
+        xmax = self.graph.xmax
+        points = self.plot.points
+        f = self.adc.frequency
+        if (len(data) + len(points)) / f > xmax:
+            self.plot.points = [(i / f, d) for i, d in enumerate(data)]
+        else:
+            s = len(points) / f
+            self.plot.points.extend([(i / f + s, d)
+                                     for i, d in enumerate(data)])
+        self.plot.points = self.plot.points

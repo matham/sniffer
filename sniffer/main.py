@@ -51,23 +51,6 @@ class ExperimentApp(MoaApp):
     `'paused'`, or `'running'`. The state controls which buttons are active.
     '''
 
-    exp_status = NumericProperty(0)
-    '''Numerical representation of the current experiment stage.
-
-    Number   Meaning
-    =======  ============
-    0        Experiment is off
-    1        Barst (devices) are being initialized
-    2        Waiting to start next animal
-    3        Waiting for the animal to do a nose poke
-    4        Waiting for the animal to exit the nose poke
-    5        Waiting for the animal to make a decision
-    6        ITI started
-    =======  ============
-
-    Defaults to zero.
-    '''
-
     exception_value = StringProperty('')
     '''The text of the current/last exception.
     '''
@@ -123,16 +106,12 @@ class ExperimentApp(MoaApp):
     root stage.
     '''
 
-    plots = ListProperty([])
-
-    next_animal_btn = ObjectProperty(None, rebind=True)
-    '''The button that is pressed when the we should do the next animal.
-    '''
-
     simulation_devices = ObjectProperty(None)
     '''The base widget that contains all the buttons that simulate / display
     the device state.
     '''
+
+    boxes = ObjectProperty(None)
 
     def __init__(self, **kw):
         super(ExperimentApp, self).__init__(**kw)
@@ -143,12 +122,6 @@ class ExperimentApp(MoaApp):
 
     def build(self):
         main_view = MainView()
-        ids = main_view.ids
-        colors = [rgb('7dac9f'), rgb('dc7062'), rgb('66a8d4'), rgb('e5b060')]
-        for i, g in enumerate((ids.ttnp, ids.tinp, ids.ttrp, ids.outcome)):
-            plot = MeshLinePlot(color=colors[i])
-            g.add_plot(plot)
-            self.plots.append(plot)
         self.err_popup = Factory.get('ErrorPopup')()
         self.popup_anim = Sequence(Animation(t='in_bounce', warn_alpha=1.),
                                    Animation(t='out_bounce', warn_alpha=0))
@@ -231,9 +204,10 @@ class ExperimentApp(MoaApp):
         logging.exception(self.exception_value)
 
         root = self.base_stage
-        if root is not None and root.block.started and not root.block.finished:
-            self.recovery_file = self.save_state(prefix='experiment_',
-                stage=root, dir=self.recovery_path)
+        if root is not None and any(child.started and not child.finished
+                                    for child in root.ids.boxes.children):
+            self.recovery_file = self.save_state(
+                prefix='experiment_', stage=root, dir=self.recovery_path)
         if root:
             root.stop()
 
