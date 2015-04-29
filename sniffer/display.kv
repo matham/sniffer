@@ -1,10 +1,11 @@
 #:kivy 1.8.1
+#@PydevCodeAnalysisIgnore
 #:import Factory kivy.factory.Factory
 #:import rgb kivy.utils.get_color_from_hex
 
 
 # the root level widget
-<MainView>:
+<MainView@BoxLayout>:
     padding: 20
     ScrollView:
         scroll_type: ['bars']
@@ -14,81 +15,119 @@
             size_hint: None, None
             size: self.minimum_size
             spacing: [0, 30]
-            ExperimentControl
+            GridLayout:
+                size_hint: None, None
+                size: self.minimum_size
+                rows: 1
+                spacing: [20, 0]
+                padding: 20
+                ExceptionDisplay
+                SimulateButton
+                StartWithConfig
+                StopExperiment
+                GridLayout:
+                    width: self.minimum_width
+                    size_hint_x: None
+                    cols: 1
+                    Label:
+                        text: 'Filter'
+                    Spinner:
+                        values: ['Rat', 'Mouse']
+                        text: 'Rat'
+                        width: max([x.width for x in self._dropdown.children]) + 5
+                        size_hint_x: None
+                        on_text: app.filter_type = self.text
             GridLayout:
                 cols: 1
                 size_hint: None, None
                 size: self.minimum_size
                 on_parent: app.simulation_devices = self
                 id: simulated_devices
-                OdorContainer:
+                GridLayout:
                     id: odors
+                    cols: 8
+                    size_hint: None, None
+                    size: self.minimum_size
+            GridLayout:
+                id: video
+                rows: 1
+                size_hint: None, None
+                size: self.minimum_size
     GridLayout:
         id: boxes
-        on_parent: app.boxes = self
         cols: 2
 
 
-# the experiment status
-<ExperimentStatus>:
-    size_hint_x: None
-    width: self.texture_size[0]
-    valign: 'middle'
-    halign: 'center'
-    color: (.8, .4, 0, 1)
-    index: (len(self.parent.children) - self.parent.children.index(self.__self__)) if self.parent and self in self.parent.children else 0
-    disabled: (self.parent.root.exp_status < self.index) if self.parent else True
-
 <BoxDisplay>:
     orientation: 'vertical'
-    graph: graph
-    GridLayout:
+    filter_type: app.filter_type
+    ScrollView:
         size_hint_y: None
-        height: 70
-        rows: 1
-        padding: [10]
-        spacing: 10
-        ToggleButton:
-            text: 'Acquire'
-            width: self.texture_size[0] + 10
+        height: animal_name.minimum_height + 20
+        GridLayout:
             size_hint_x: None
-            on_state: root.adc.activate(self.__self__) if self.state == 'down' else root.adc.deactivate(self.__self__)
-            disabled: animal_name.disabled
-        TextInput:
-            id: animal_name
-            width: 100
-            multiline: False
-            size_hint_x: None
-            disabled: not root.stage or (not root.stage.ids.box_wait.started or root.stage.ids.box_wait.finished)
-            on_text: if root.stage: root.stage.animal_id = self.text
-        Button:
-            text: 'Start'
-            width: self.texture_size[0] + 10
-            size_hint_x: None
-            id: start_btn
-            on_parent: root.next_btn = Factory.get('ButtonChannel')(button=self)
-            disabled: not root.stage or animal_name.disabled or not root.stage.odors
-        ToggleButton:
-            text: 'Pause'
-            width: self.texture_size[0] + 10
-            size_hint_x: None
-            disabled: stop_btn.disabled
-            on_state: root.stage.pause() if self.state == 'down' else root.stage.unpause()
-        Button:
-            text: 'Stop'
-            width: self.texture_size[0] + 10
-            size_hint_x: None
-            id: stop_btn
-            on_press: root.stage.stop(stage=False)
-            disabled: not root.stage or not root.stage.started
-        ScrollView:
-            GridLayout:
-                id: status
-                rows:1
-                root: root
-                spacing: [20, 0]
+            width: self.minimum_width
+            rows: 1
+            padding: [10, 5]
+            spacing: 10
+            ToggleButton:
+                id: acquire
+                text: 'Acquire'
+                width: self.texture_size[0] + 10
                 size_hint_x: None
-                width: self.minimum_width
+                on_state: root.moas.box_stage.set_adc_state(self.state == 'down', root.__self__)
+                disabled: not root.moas.box_stage.started
+            Spinner:
+                values: ['raw', 'filtered']
+                text: 'filtered'
+                on_text: root.plot_type = self.text
+                width: 60
+                size_hint_x: None
+            Spinner:
+                id: protocols
+                values: moas.verify.odor_protocols.keys()
+                width: max([x.width for x in self._dropdown.children]) + 20
+                size_hint_x: None
+                disabled: animal_name.disabled
+            TextInput:
+                id: animal_name
+                width: 100
+                multiline: False
+                size_hint_x: None
+                disabled: not root.moas.box_wait.started or root.moas.box_wait.finished
+                on_text: root.moas.box_stage.animal_id = self.text
+            Button:
+                text: 'Start'
+                width: self.texture_size[0] + 10
+                size_hint_x: None
+                id: start_btn
+                disabled: animal_name.disabled or not protocols.text or protocols.text not in moas.verify.odor_protocols
+            ToggleButton:
+                text: ''
+                background_down: 'play.png'
+                background_normal: 'pause.png'
+                width: self.height
+                size_hint_x: None
+                disabled: stop_btn.disabled
+                on_state: root.moas.box_stage.pause() if self.state == 'down' else root.moas.box_stage.unpause()
+            Button:
+                text: 'Stop'
+                width: self.texture_size[0] + 10
+                size_hint_x: None
+                id: stop_btn
+                on_press: root.moas.box_stage.stop(stage=False)
+                disabled: not root.moas.box_stage.started
+            ToggleButton:
+                text: 'Record'
+                width: self.texture_size[0] + 10
+                size_hint_x: None
+                id: record_video
+                on_state: root.moas.box_stage.record_video[root.moas.box_stage.box] = self.state == 'down'
+                state: 'down' if root.moas.box_stage.record_video[root.moas.box_stage.box] else 'normal'
+                disabled: root.moas.box_wait.finished or not root.moas.box_stage.video_player
+
+    TimeLine:
+        id: timer
     Graph:
         id: graph
         xlabel: 'Time'
@@ -104,165 +143,6 @@
         x_ticks_major: 1
         y_ticks_major: 0.1
         y_ticks_minor: 4
-        ymax: .3
-        ymin: -.3
-        xmax: 10
-
-
-
-# a icon widget with a label
-<LabeledIcon@Widget>
-    size_hint: None, None
-    size: max(self.icon_size[0], self.max_width), self.icon_size[1] + self.text_height
-    text: ''
-    max_width: 50
-    text_height: 62
-    background_down: 'green-led-on-th.png'
-    background_normal: 'green-led-off-th.png'
-    icon_size: 38, 38
-    halign: 'center'
-    canvas:
-        Color:
-            rgb: (1, 1, 1)
-            a: .5 if self.disabled else 1
-        Rectangle:
-            size: root.icon_size
-            pos: self.x + self.width / 2. - self.icon_size[0] / 2., min(self.top - self.icon_size[1], self.y + root.text_height + 10)
-            source: self.background_normal if self.state == 'normal' else self.background_down
-    Label:
-        pos: root.pos
-        text: root.text
-        markup: True
-        size: root.width, root.text_height
-        text_size: self.size
-        valign: 'top'
-        halign: root.halign
-        strip: True
-        font_size: '11dp'
-
-# various button/switch widgets
-<SwitchIcon@ToggleButtonBehavior+LabeledIcon>
-<PressIcon@ButtonBehavior+LabeledIcon>
-
-<DeviceSwitch>:
-    disabled: app.app_state == 'clear' or app.app_state == 'exception' or not self.dev
-    text_height: 50
-    halign: 'center'
-
-<OdorSwitch@DeviceSwitch>:
-    dev: app.base_stage and app.base_stage.barst.odor_devs and app.base_stage.barst.odor_devs[self.dev_idx]
-
-<OdorDarkSwitch@OdorSwitch>
-    canvas.before:
-        Color:
-            rgba: [0.5, 0.5, 0.5, 0.08]
-        Rectangle:
-            size: self.size
-            pos: self.pos
-
-<OdorContainer>:
-    size_hint: None, None
-    size: self.minimum_size
-    cols: 8
-    spacing: [10, 0]
-
-
-# controls for starting/stopping the experiment
-
-<ExperimentControl@GridLayout>:
-    size_hint: None, None
-    size: self.minimum_size
-    rows: 1
-    spacing: [20, 0]
-    padding: 20
-    SwitchIcon:
-        id: simulate
-        text: 'Simulate?'
-        text_height: 30
-        background_down: 'checkbox-checked-gray-th.png'
-        background_normal: 'checkbox-unchecked-gray-th.png'
-        disabled: app.app_state != 'clear'
-        on_state: app.simulate = self.state == 'down'
-    GridLayout:
-        cols: 1
-        size_hint: None, None
-        height: self.minimum_height
-        width: 200
-        padding: [5]
-        spacing: [5]
-        TextInput:
-            height: 2 * self.line_height + 5
-            size_hint_y: None
-            multiline: False
-            text: app.exp_config_path
-            on_text: app.exp_config_path = self.text
-        GridLayout:
-            rows: 1
-            size_hint_y: None
-            height: 50
-            spacing: [5]
-            Button:
-                text: 'Start'
-                on_press: app.start_stage()
-                disabled: app.app_state != 'clear'
-            Button:
-                text: 'Recover'
-                #on_press: app.start_stage(True)
-                disabled: app.app_state != 'clear'
-    SwitchIcon:
-        pos: self.parent.pos
-        id: switch
-        size_hint: None, None
-        text: 'Pause' if self.state == 'normal' else 'Continue'
-        max_width: 0
-        text_height: 30
-        background_down: 'play.png'
-        background_normal: 'pause.png'
-        icon_size: 48, 48
-        on_press:
-            app.base_stage is not None and (app.base_stage.unpause() if self.state == 'normal' else app.base_stage.pause())
-            app.app_state =  'running' if self.state == 'normal' else 'paused'
-        disabled: app.app_state != 'running' and app.app_state != 'paused'
-    PressIcon:
-        pos: self.parent.pos
-        id: press
-        text: 'Stop'
-        max_width: 0
-        text_height: 30
-        background_down: 'stop_0.png'
-        background_normal: 'stop_1.png'
-        icon_size: 48, 48
-        on_press: app.base_stage and app.base_stage.stop()
-        disabled: app.app_state != 'running'
-    Label:
-        size_hint_x: None
-        width: self.height
-        on_touch_down: app.exception_value and self.collide_point(*args[1].pos) and (app.popup_anim.cancel(self) or setattr(self, 'warn_alpha', int(bool(app.exception_value))) or app.err_popup.open())
-        warn_alpha: 0.
-        warn_text: app.exception_value
-        on_warn_text:
-            if self.warn_text and app.popup_anim: app.popup_anim.start(self)
-            else: setattr(self, 'warn_alpha', 0)
-        canvas:
-            Color:
-                rgb: 1, 1, 1
-                a: self.warn_alpha
-            Rectangle:
-                pos: self.pos
-                size: self.size
-                source: 'Remove_1.png'
-
-
-<ErrorPopup@Popup>:
-    title: 'Message'
-    size_hint: None, None
-    height: min(self.parent.height if self.parent else 0, 600)
-    width: min(self.parent.width if self.parent else 0, 800)
-    ScrollView:
-        scroll_type: ['bars']
-        bar_width: 10
-        Label:
-            size_hint_y: None
-            height: self.texture_size[1]
-            text_size: self.width, None
-            text: app.exception_value
+        ymax: 1
+        ymin: -1
+        xmax: 2

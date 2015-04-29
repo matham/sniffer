@@ -1,7 +1,4 @@
 0.p0, NO
-0.p1, why not
-0.p4, that one
-0.p5, boxes
-0.p10, apples
-0.p8, the other one
-0.p7, test
+0.p1, MO
+0.p6, rand1
+0.p7, rand2

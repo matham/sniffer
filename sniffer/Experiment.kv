@@ -1,58 +1,58 @@
 #:kivy 1.8.1
+#@PydevCodeAnalysisIgnore
+#:import moas moa.base.named_moas
 
 
 <BoxStage>:
     name: 'box_stage'
     repeat: -1
     id: box_stage
-    on_odors: self.display.next_btn.disabled = not self.odors
     on_count:
-        if self.count: box_stage.barst.adc_devs[self.box].deactivate(self.__self__)
         if self.count: root.deinitialize_box()
+    on_finished:
+        if self.finished: root.deinitialize_box()
     DigitalGateStage:
         id: box_wait
-        on_started: if self.started: root.display.exp_status = 0
         name: 'box_wait'
-        device: box_stage.display.next_btn if box_stage.display else None
+        device: root.next_animal_dev
         exit_state: True
     Delay:
-        delay: root.verify.hab_dur
+        delay: moas.verify.hab_dur
         on_started:
-            if self.started: box_stage.barst.adc_devs[root.box].activate(root.__self__)
-            if self.started: root.display.exp_status = 1
             if self.started: root.initialize_box()
     Delay:
         id: trial
-        repeat: root.verify.num_trials
+        disabled: not moas.verify.num_trials
+        repeat: moas.verify.num_trials
         Delay:
-            delay: root.verify.trial_dur
+            delay: moas.verify.trial_dur
             on_started:
+                if self.started: root.display.ids.timer.set_active_slice('Trial')
+                if self.started: root.display.ids.timer.update_slice_attrs('Trial', text='Trial ({}/{})'.format(trial.count + 1, moas.verify.num_trials))
                 if self.started: root.do_odor(trial.count)
-                if self.started: root.display.exp_status += 1
             on_finished: if self.finished: root.do_odor(trial.count, False)
         Delay:
             disabled: trial.count == trial.repeat - 1
-            delay: root.verify.iti
-            on_started: if self.started: root.display.exp_status += 1
+            min: moas.verify.iti_min
+            max: moas.verify.iti_max
+            delay_type: 'random'
+            on_started: if self.started: root.display.ids.timer.set_active_slice('ITI')
+            on_delay: root.display.ids.timer.update_slice_attrs('ITI', duration=self.delay)
     Delay:
-        delay: root.verify.post_dur
-        on_started: if self.started: root.display.exp_status += 1
-        on_finished:
-            if self.finished: box_stage.barst.adc_devs[root.box].deactivate(root.__self__)
-            if self.finished: root.deinitialize_box()
+        delay: moas.verify.post_dur
+        on_started: if self.started: root.display.ids.timer.set_active_slice('Post')
 
 
-<RootStage>:
+<RootStage@MoaStage>:
     name: 'Root_stage'
-    barst: barst
-    verify: verify
     InitBarstStage:
-        id: barst
-        root: root
         name: 'barst'
     VerifyConfigStage:
-        id: verify
-        barst: barst
+        name: 'verify'
     MoaStage:
-        id: boxes
         order: 'parallel'
+        RandValves:
+            repeat: -1
+        MoaStage:
+            name: 'boxes'
+            order: 'parallel'
