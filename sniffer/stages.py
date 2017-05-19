@@ -17,7 +17,7 @@ from moa.stage.delay import Delay
 from moa.utils import (
     ConfigPropertyList, ConfigPropertyDict, to_string_list, to_bool)
 from moa.compat import unicode_type
-from moa.data_logger import DataLogger
+from cplcom.moa.data_logger import DataLogger
 from moa.base import named_moas as moas
 from moa.device.digital import ButtonChannel
 
@@ -31,7 +31,7 @@ from kivy.uix.button import Button
 
 from cplcom.device.barst_server import Server
 from cplcom.device.ftdi import FTDIDevChannel, FTDIADCDevice
-from cplcom.stages import InitStage
+from cplcom.moa.stages import InitStage
 from cplcom.device.ffplayer import FFPyPlayerDevice, FFPyWriterDevice
 from cplcom.graphics import FFImage
 
